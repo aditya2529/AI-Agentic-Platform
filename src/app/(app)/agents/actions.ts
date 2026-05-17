@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
@@ -84,6 +85,45 @@ export async function deleteAgent(id: string) {
   const userId = await requireUserId();
   await db.delete(agents).where(and(eq(agents.id, id), eq(agents.userId, userId)));
   revalidatePath("/agents");
+}
+
+// URL-safe random token. ~22 chars at 16 bytes — plenty of entropy, no
+// guessing in any practical timeframe. Not a secret per se (the URL itself
+// is the access grant), but the token must be unguessable.
+function generateShareToken(): string {
+  return randomBytes(16)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+export async function enableAgentSharing(id: string): Promise<{ shareToken: string }> {
+  const userId = await requireUserId();
+  const [agent] = await db
+    .select()
+    .from(agents)
+    .where(and(eq(agents.id, id), eq(agents.userId, userId)))
+    .limit(1);
+  if (!agent) throw new Error("Agent not found");
+
+  const shareToken = agent.shareToken ?? generateShareToken();
+  await db
+    .update(agents)
+    .set({ isPublic: true, shareToken, updatedAt: new Date() })
+    .where(eq(agents.id, id));
+
+  revalidatePath(`/agents/${id}/run`);
+  return { shareToken };
+}
+
+export async function disableAgentSharing(id: string): Promise<void> {
+  const userId = await requireUserId();
+  await db
+    .update(agents)
+    .set({ isPublic: false, updatedAt: new Date() })
+    .where(and(eq(agents.id, id), eq(agents.userId, userId)));
+  revalidatePath(`/agents/${id}/run`);
 }
 
 const graphSchema = z.object({

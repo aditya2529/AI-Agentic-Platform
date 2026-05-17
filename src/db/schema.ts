@@ -7,6 +7,7 @@ import {
   uniqueIndex,
   primaryKey,
   jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "next-auth/adapters";
 import { sql } from "drizzle-orm";
@@ -130,20 +131,28 @@ export const EMPTY_SPEC: AgentSpec = {
   summary: "A blank agent — describe what you want it to do in the chat.",
 };
 
-export const agents = pgTable("agent", {
-  id: text("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  description: text("description"),
-  spec: jsonb("spec").$type<AgentSpec>().notNull().default(EMPTY_SPEC),
-  graph: jsonb("graph").$type<AgentGraph>().notNull().default({ nodes: [], edges: [] }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+export const agents = pgTable(
+  "agent",
+  {
+    id: text("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    spec: jsonb("spec").$type<AgentSpec>().notNull().default(EMPTY_SPEC),
+    graph: jsonb("graph").$type<AgentGraph>().notNull().default({ nodes: [], edges: [] }),
+    // Public sharing — when isPublic=true, anyone with the shareToken can chat
+    // with the agent at /a/[shareToken]/chat without auth.
+    isPublic: boolean("is_public").notNull().default(false),
+    shareToken: text("share_token"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("agent_share_token_idx").on(table.shareToken)],
+);
 
 export const buildMessageRole = pgEnum("build_message_role", ["user", "assistant"]);
 

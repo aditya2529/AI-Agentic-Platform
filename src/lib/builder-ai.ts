@@ -1,5 +1,5 @@
 import { createGroq } from "@ai-sdk/groq";
-import { generateObject } from "ai";
+import { generateObject, streamObject } from "ai";
 import { z } from "zod";
 import type { AgentSpec } from "@/db/schema";
 
@@ -42,6 +42,8 @@ const RefineResponseSchema = z.object({
     .describe("What to say to the user about what just changed in their agent."),
 });
 
+export type RefineResponse = z.infer<typeof RefineResponseSchema>;
+
 const SYSTEM_PROMPT = `You are an "agent designer" that helps a user define an AI agent by chatting.
 
 You will be given:
@@ -62,18 +64,15 @@ Rules:
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
-export async function refineAgentSpec(args: {
+function buildPrompt(args: {
   currentSpec: AgentSpec;
   history: ChatMessage[];
   userMessage: string;
-}): Promise<{ updatedSpec: AgentSpec; name: string; assistantReply: string }> {
-  const model = getBuilderModel();
-
+}) {
   const historyText = args.history
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join("\n\n");
-
-  const prompt = `CURRENT SPEC:
+  return `CURRENT SPEC:
 ${JSON.stringify(args.currentSpec, null, 2)}
 
 CHAT HISTORY:
@@ -81,12 +80,20 @@ ${historyText || "(none yet)"}
 
 USER'S NEW MESSAGE:
 ${args.userMessage}`;
+}
+
+export async function refineAgentSpec(args: {
+  currentSpec: AgentSpec;
+  history: ChatMessage[];
+  userMessage: string;
+}): Promise<{ updatedSpec: AgentSpec; name: string; assistantReply: string }> {
+  const model = getBuilderModel();
 
   const { object } = await generateObject({
     model,
     schema: RefineResponseSchema,
     system: SYSTEM_PROMPT,
-    prompt,
+    prompt: buildPrompt(args),
   });
 
   return {
@@ -94,4 +101,22 @@ ${args.userMessage}`;
     name: object.name,
     assistantReply: object.assistantReply,
   };
+}
+
+// Streaming variant — emits partial RefineResponse objects as the model
+// generates them. The route handler consumes this and forwards a JSON-lines
+// SSE-style stream to the client so the spec bar fills in real time.
+export function streamRefineAgentSpec(args: {
+  currentSpec: AgentSpec;
+  history: ChatMessage[];
+  userMessage: string;
+}) {
+  const model = getBuilderModel();
+
+  return streamObject({
+    model,
+    schema: RefineResponseSchema,
+    system: SYSTEM_PROMPT,
+    prompt: buildPrompt(args),
+  });
 }

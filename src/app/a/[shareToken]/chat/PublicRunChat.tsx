@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowUp, MessageSquarePlus, CornerDownLeft } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowUp, CornerDownLeft, MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -15,18 +15,23 @@ type ChatItem =
   | { kind: "msg"; msg: Msg }
   | { kind: "error"; id: string; message: string; lastUserText: string };
 
-const storageKey = (agentId: string) => `agentic:run:${agentId}`;
+const storageKey = (token: string) => `agentic:public:${token}`;
 
-export function RunChat({ agentId }: { agentId: string }) {
+export function PublicRunChat({
+  shareToken,
+  agentName,
+}: {
+  shareToken: string;
+  agentName: string;
+}) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Restore from localStorage on mount
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(storageKey(agentId));
+      const raw = localStorage.getItem(storageKey(shareToken));
       if (raw) {
         const parsed = JSON.parse(raw) as Msg[];
         if (Array.isArray(parsed)) {
@@ -34,19 +39,18 @@ export function RunChat({ agentId }: { agentId: string }) {
         }
       }
     } catch {
-      // ignore corrupt storage
+      // ignore
     }
-  }, [agentId]);
+  }, [shareToken]);
 
-  // Persist only successful messages (not errors)
   useEffect(() => {
     const msgs = items.flatMap((i) => (i.kind === "msg" ? [i.msg] : []));
     try {
-      localStorage.setItem(storageKey(agentId), JSON.stringify(msgs));
+      localStorage.setItem(storageKey(shareToken), JSON.stringify(msgs));
     } catch {
-      // quota etc.
+      // ignore
     }
-  }, [items, agentId]);
+  }, [items, shareToken]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -61,11 +65,9 @@ export function RunChat({ agentId }: { agentId: string }) {
       const assistantId = `a-${Date.now()}`;
       const assistantMsg: Msg = { id: assistantId, role: "assistant", content: "" };
 
-      // Build history from current messages + new user msg (excluding any errors)
       const historyMsgs = items.flatMap((i) => (i.kind === "msg" ? [i.msg] : []));
       const history = [...historyMsgs, userMsg];
 
-      // Drop any pending error, add user + empty assistant
       setItems((prev) => [
         ...prev.filter((i) => i.kind !== "error"),
         { kind: "msg", msg: userMsg },
@@ -74,7 +76,7 @@ export function RunChat({ agentId }: { agentId: string }) {
       setStreaming(true);
 
       try {
-        const res = await fetch(`/api/agents/${agentId}/run`, {
+        const res = await fetch(`/api/share/${shareToken}/run`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -83,7 +85,6 @@ export function RunChat({ agentId }: { agentId: string }) {
         });
         if (!res.ok || !res.body) {
           const errText = await res.text().catch(() => "Request failed");
-          // Remove the empty assistant bubble, append error card
           setItems((prev) => [
             ...prev.filter((i) => !(i.kind === "msg" && i.msg.id === assistantId)),
             { kind: "error", id: `err-${Date.now()}`, message: errText, lastUserText: text },
@@ -119,13 +120,13 @@ export function RunChat({ agentId }: { agentId: string }) {
         setStreaming(false);
       }
     },
-    [agentId, items, streaming],
+    [shareToken, items, streaming],
   );
 
   function newChat() {
     setItems([]);
     try {
-      localStorage.removeItem(storageKey(agentId));
+      localStorage.removeItem(storageKey(shareToken));
     } catch {
       // ignore
     }
@@ -150,7 +151,7 @@ export function RunChat({ agentId }: { agentId: string }) {
       <div className="mx-auto w-full max-w-3xl flex-1 space-y-5 overflow-y-auto px-6 py-6">
         {items.length === 0 ? (
           <AssistantBubble>
-            Send a message to test your agent. Your conversation stays here even if you refresh.
+            Send a message to chat with {agentName}. Your conversation stays in your browser.
           </AssistantBubble>
         ) : null}
 
@@ -187,7 +188,7 @@ export function RunChat({ agentId }: { agentId: string }) {
                   send(input.trim());
                 }
               }}
-              placeholder="Send a message to test your agent…"
+              placeholder={`Send a message to ${agentName}…`}
               className="min-h-12 resize-none border-0 bg-transparent px-3 py-3 text-base leading-relaxed shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
               disabled={streaming}
             />
@@ -204,7 +205,7 @@ export function RunChat({ agentId }: { agentId: string }) {
           <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
             <CornerDownLeft className="h-3 w-3" /> to send
             <span className="mx-1.5 opacity-40">·</span>
-            Shift + Enter for newline
+            Powered by <span className="text-gradient">Agentic</span>
           </p>
         </div>
       </div>
