@@ -29,8 +29,6 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-background">
-      <div className="aurora" />
-      <div className="aurora-extra" />
       <div className="absolute inset-0 grid-bg -z-10" />
 
       <div className="relative flex items-center justify-between border-b border-white/10 bg-background/60 px-8 py-4 backdrop-blur-2xl">
@@ -43,7 +41,7 @@ export default async function AgentRunPage({ params }: { params: Promise<{ id: s
           </Link>
           <div className="h-5 w-px bg-white/10" />
           <div>
-            <h1 className="text-xl font-semibold tracking-tight"><span className="text-gradient">{agent.name}</span></h1>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">{agent.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{spec.summary}</p>
           </div>
         </div>

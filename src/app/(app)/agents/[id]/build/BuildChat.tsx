@@ -2,20 +2,31 @@
 
 import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AssistantBubble,
+  ErrorCard,
+  PendingBubble,
+  UserBubble,
+} from "@/components/ChatBubbles";
 import { sendBuildMessage } from "./actions";
 
-type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
+type ChatItem =
+  | { kind: "msg"; id: string; role: "user" | "assistant"; content: string }
+  | { kind: "error"; id: string; message: string; lastUserText: string };
 
 export function BuildChat({
   agentId,
   initialMessages,
 }: {
   agentId: string;
-  initialMessages: ChatMessage[];
+  initialMessages: { id: string; role: "user" | "assistant"; content: string }[];
 }) {
-  const [messages, setMessages] = useState(initialMessages);
+  const [items, setItems] = useState<ChatItem[]>(
+    initialMessages.map((m) => ({ kind: "msg" as const, id: m.id, role: m.role, content: m.content })),
+  );
   const [input, setInput] = useState("");
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -23,27 +34,27 @@ export function BuildChat({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, pending]);
+  }, [items.length, pending]);
 
-  function send() {
-    const text = input.trim();
+  function send(text: string) {
     if (!text || pending) return;
     setInput("");
-    setMessages((m) => [
-      ...m,
-      { id: `tmp-${Date.now()}`, role: "user", content: text },
+    setItems((prev) => [
+      ...prev.filter((i) => i.kind !== "error"),
+      { kind: "msg", id: `tmp-${Date.now()}`, role: "user", content: text },
     ]);
     startTransition(async () => {
       try {
         await sendBuildMessage(agentId, text);
         router.refresh();
       } catch (err) {
-        setMessages((m) => [
-          ...m,
+        setItems((prev) => [
+          ...prev,
           {
+            kind: "error",
             id: `err-${Date.now()}`,
-            role: "assistant",
-            content: `Something went wrong: ${err instanceof Error ? err.message : String(err)}`,
+            message: err instanceof Error ? err.message : String(err),
+            lastUserText: text,
           },
         ]);
       }
@@ -52,74 +63,62 @@ export function BuildChat({
 
   return (
     <div className="relative flex h-full flex-col">
-      <div className="flex-1 space-y-6 overflow-y-auto px-8 py-8">
-        {messages.length === 0 ? (
-          <div className="mx-auto max-w-2xl rounded-2xl border border-white/15 bg-card/40 p-8 text-base text-muted-foreground backdrop-blur-xl">
-            <p className="text-lg font-semibold text-foreground">Describe your agent.</p>
-            <ul className="mt-4 space-y-2 text-base">
-              <li>· &ldquo;An agent that researches a company and summarizes recent news about it.&rdquo;</li>
-              <li>· &ldquo;A math tutor that walks me through solving equations step by step.&rdquo;</li>
-              <li>· &ldquo;A bot that fetches a webpage and gives me the key takeaways.&rdquo;</li>
-            </ul>
-          </div>
+      <div className="mx-auto w-full max-w-3xl flex-1 space-y-5 overflow-y-auto px-6 py-8">
+        {items.length === 0 ? (
+          <AssistantBubble>
+            Describe what your agent should do. I&apos;ll set it up for you and you can refine
+            it from there.
+          </AssistantBubble>
         ) : null}
 
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[78%] whitespace-pre-wrap rounded-3xl px-6 py-4 text-lg leading-relaxed shadow-lg ${
-                m.role === "user"
-                  ? "bg-white text-black"
-                  : "border border-white/10 bg-card/60 text-foreground backdrop-blur-xl"
-              }`}
-            >
-              {m.content}
-            </div>
-          </div>
-        ))}
+        {items.map((item) => {
+          if (item.kind === "error") {
+            return (
+              <ErrorCard
+                key={item.id}
+                message={item.message}
+                onRetry={() => send(item.lastUserText)}
+              />
+            );
+          }
+          return item.role === "user" ? (
+            <UserBubble key={item.id}>{item.content}</UserBubble>
+          ) : (
+            <AssistantBubble key={item.id}>{item.content}</AssistantBubble>
+          );
+        })}
 
-        {pending ? (
-          <div className="flex justify-start">
-            <div className="inline-flex items-center gap-3 rounded-3xl border border-white/10 bg-card/60 px-6 py-4 text-base text-muted-foreground backdrop-blur-xl">
-              <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-              Updating your agent…
-            </div>
-          </div>
-        ) : null}
+        {pending ? <PendingBubble label="Refining your agent…" /> : null}
 
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-white/10 bg-background/60 px-8 py-5 backdrop-blur-2xl">
+      <div className="border-t border-white/10 bg-background/60 px-6 py-5 backdrop-blur-2xl">
         <div className="mx-auto max-w-3xl">
-          <div className="glow-hover flex items-end gap-3 rounded-2xl border border-white/15 bg-card/40 p-3 backdrop-blur-xl">
+          <div className="glow-hover flex items-end gap-2 rounded-2xl border border-white/15 bg-card/40 p-2 backdrop-blur-xl">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  send();
+                  send(input.trim());
                 }
               }}
-              placeholder="Tell me what this agent should do…"
-              className="min-h-14 resize-none border-0 bg-transparent px-3 text-base leading-relaxed shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+              placeholder="Refine your agent — e.g. 'make it more formal'"
+              className="min-h-12 resize-none border-0 bg-transparent px-3 py-3 text-base leading-relaxed shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
               disabled={pending}
             />
             <Button
-              onClick={send}
+              onClick={() => send(input.trim())}
               disabled={pending || !input.trim()}
-              className="h-12 rounded-full bg-white px-6 text-base font-semibold text-black transition hover:bg-white/90 hover:scale-[1.03] disabled:scale-100"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-full bg-white text-black transition hover:bg-white/90 hover:scale-[1.05] disabled:scale-100"
+              aria-label="Send"
             >
-              Send
+              <ArrowUp className="h-5 w-5" />
             </Button>
           </div>
-          <p className="mt-3 text-center text-xs text-muted-foreground">
-            Enter to send · Shift+Enter for newline
-          </p>
         </div>
       </div>
     </div>

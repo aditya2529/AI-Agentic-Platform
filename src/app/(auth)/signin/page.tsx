@@ -3,14 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { devSignIn } from "./dev-actions";
 
 type SearchParams = Promise<{ callbackUrl?: string; error?: string }>;
 
 export default async function SignInPage({ searchParams }: { searchParams: SearchParams }) {
   const { callbackUrl = "/agents", error } = await searchParams;
-  const isDev =
+  const devEnabled =
     process.env.NODE_ENV !== "production" || process.env.ENABLE_DEV_SIGNIN === "true";
   const githubConfigured = Boolean(process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET);
   const resendConfigured = Boolean(process.env.AUTH_RESEND_KEY);
@@ -28,27 +27,20 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
         </div>
 
         <div className="fade-up max-w-xl">
-          <h1 className="text-[clamp(2.5rem,6vw,4.75rem)] font-semibold leading-[1] tracking-[-0.04em]">
-            <span className="block">Claude is for</span>
-            <span className="block"><em className="not-italic text-muted-foreground/80">you</em>.</span>
-            <span className="mt-2 block">Agentic is for</span>
-            <span className="block text-gradient">your users.</span>
+          <h1 className="text-[clamp(2.5rem,6vw,5rem)] font-semibold leading-[1] tracking-[-0.04em]">
+            <span className="block">Ship your AI workflows</span>
+            <span className="block">as <span className="text-gradient">your own product</span>.</span>
           </h1>
 
           <p className="mt-8 max-w-md text-lg leading-relaxed text-muted-foreground">
-            A Custom GPT or Claude Project lives inside <em className="not-italic text-foreground/80">someone else&apos;s</em> app —
-            only your team, $20/user, their UI, their data policy.
-          </p>
-
-          <p className="mt-4 max-w-md text-lg leading-relaxed text-muted-foreground">
-            Agentic ships those same AI workflows as <em className="not-italic text-foreground/80">your own product</em>:
-            a link, an embed, a bot in your app. No ChatGPT account required.
-            You pick the model. You own the data. You charge for it.
+            Custom GPTs and Claude Projects live inside someone else&apos;s app.
+            Agentic lets you embed the same intelligence in your own — under your brand,
+            your data, your pricing.
           </p>
 
           <div className="mt-10 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" />
-            <span className="uppercase tracking-[0.2em]">Free MVP · Powered by Groq</span>
+            <span className="uppercase tracking-[0.2em]">Private beta</span>
           </div>
         </div>
 
@@ -70,25 +62,17 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
             <p className="mt-4 text-sm text-destructive">Sign-in failed. Please try again.</p>
           ) : null}
 
-          {isDev ? (
+          {devEnabled ? (
             <form action={devSignIn} className="mt-6 flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <Label
-                  htmlFor="dev-email"
-                  className="text-xs uppercase tracking-[0.2em] text-muted-foreground"
-                >
-                  Quick sign-in
-                </Label>
-                <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
-                  Dev
-                </Badge>
-              </div>
+              <Label htmlFor="email" className="text-sm font-medium">
+                Email
+              </Label>
               <Input
-                id="dev-email"
+                id="email"
                 name="email"
                 type="email"
-                placeholder="you@example.com"
-                defaultValue="demo@local.test"
+                placeholder="you@company.com"
+                autoFocus
                 required
                 className="h-12 rounded-full bg-background/40 px-5 text-base"
               />
@@ -96,16 +80,12 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
                 type="submit"
                 className="group h-12 w-full rounded-full bg-white text-base font-semibold text-black transition hover:bg-white/90 hover:scale-[1.02]"
               >
-                Continue
-                <span className="ml-2 inline-block transition group-hover:translate-x-1">→</span>
+                Continue with email →
               </Button>
-              <p className="text-center text-[11px] text-muted-foreground">
-                Any email works. Disabled in production.
-              </p>
             </form>
           ) : null}
 
-          {(githubConfigured || resendConfigured) && isDev ? (
+          {(githubConfigured || resendConfigured) && devEnabled ? (
             <div className="my-6 flex items-center gap-3">
               <Separator className="flex-1" />
               <span className="text-xs uppercase tracking-wider text-muted-foreground">or</span>
@@ -126,7 +106,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
             </form>
           ) : null}
 
-          {resendConfigured ? (
+          {resendConfigured && !devEnabled ? (
             <form
               action={async (formData) => {
                 "use server";
@@ -140,7 +120,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
               <Input
                 name="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder="you@company.com"
                 required
                 className="h-12 rounded-full bg-background/40 px-5 text-base"
               />

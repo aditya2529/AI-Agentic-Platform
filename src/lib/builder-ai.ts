@@ -31,6 +31,11 @@ const SpecSchema = z.object({
 
 const RefineResponseSchema = z.object({
   updatedSpec: SpecSchema,
+  name: z
+    .string()
+    .min(2)
+    .max(40)
+    .describe("A short 2–4 word title for this agent, e.g. 'LinkedIn Post Writer' or 'Math Tutor'. Capitalize each word."),
   assistantReply: z
     .string()
     .min(1)
@@ -61,7 +66,7 @@ export async function refineAgentSpec(args: {
   currentSpec: AgentSpec;
   history: ChatMessage[];
   userMessage: string;
-}): Promise<{ updatedSpec: AgentSpec; assistantReply: string }> {
+}): Promise<{ updatedSpec: AgentSpec; name: string; assistantReply: string }> {
   const model = getBuilderModel();
 
   const historyText = args.history
@@ -86,6 +91,7 @@ ${args.userMessage}`;
 
   return {
     updatedSpec: object.updatedSpec,
+    name: object.name,
     assistantReply: object.assistantReply,
   };
 }

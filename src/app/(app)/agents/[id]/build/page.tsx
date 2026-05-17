@@ -42,8 +42,6 @@ export default async function AgentBuildPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-background">
-      <div className="aurora" />
-      <div className="aurora-extra" />
       <div className="absolute inset-0 grid-bg -z-10" />
 
       {/* Top bar */}
@@ -56,17 +54,25 @@ export default async function AgentBuildPage({ params }: { params: Promise<{ id:
             ← Back
           </Link>
           <div className="h-5 w-px bg-white/10" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            <span className="text-gradient">{agent.name}</span>
-          </h1>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">{agent.name}</h1>
         </div>
-        <Link
-          href={`/agents/${agent.id}/run`}
-          className="group inline-flex h-11 items-center rounded-full bg-white px-6 text-base font-semibold text-black transition hover:bg-white/90 hover:scale-[1.03]"
-        >
-          ▶ Test agent
-          <span className="ml-2 inline-block transition group-hover:translate-x-1">→</span>
-        </Link>
+        {spec.summary ? (
+          <Link
+            href={`/agents/${agent.id}/run`}
+            className="group inline-flex h-11 items-center rounded-full bg-white px-6 text-base font-semibold text-black transition hover:bg-white/90 hover:scale-[1.03]"
+          >
+            ▶ Test agent
+            <span className="ml-2 inline-block transition group-hover:translate-x-1">→</span>
+          </Link>
+        ) : (
+          <button
+            disabled
+            title="Describe your agent first"
+            className="inline-flex h-11 cursor-not-allowed items-center rounded-full border border-white/10 px-6 text-base font-medium text-muted-foreground/60"
+          >
+            ▶ Test agent
+          </button>
+        )}
       </div>
 
       {/* Live spec bar — sticks just below the header, always above the chat */}

@@ -18,22 +18,18 @@ async function requireUserId(): Promise<string> {
 const nameSchema = z.string().min(1).max(80);
 const descriptionSchema = z.string().min(5).max(2000);
 
-function nameFromDescription(desc: string): string {
-  const cleaned = desc.trim().replace(/\s+/g, " ");
-  const firstSentence = cleaned.split(/[.!?\n]/)[0];
-  return firstSentence.slice(0, 60) || "Untitled agent";
-}
-
 export async function createAgent(formData: FormData) {
   const userId = await requireUserId();
   const description = descriptionSchema.parse(
     String(formData.get("description") ?? "").trim(),
   );
-  const name = nameFromDescription(description);
+
+  // Provisional name = first sentence (replaced by AI-generated name below if available).
+  const provisional = description.trim().split(/[.!?\n]/)[0].slice(0, 60) || "New agent";
 
   const [row] = await db
     .insert(agents)
-    .values({ userId, name, description })
+    .values({ userId, name: provisional, description })
     .returning({ id: agents.id });
 
   // Kick off the first round of the build chat so the agent already has a
@@ -45,7 +41,7 @@ export async function createAgent(formData: FormData) {
   });
 
   try {
-    const { updatedSpec, assistantReply } = await refineAgentSpec({
+    const { updatedSpec, name, assistantReply } = await refineAgentSpec({
       currentSpec: { systemPrompt: "You are a helpful assistant.", tools: [], summary: "" },
       history: [],
       userMessage: description,
@@ -57,7 +53,7 @@ export async function createAgent(formData: FormData) {
     });
     await db
       .update(agents)
-      .set({ spec: updatedSpec, updatedAt: new Date() })
+      .set({ name, spec: updatedSpec, updatedAt: new Date() })
       .where(eq(agents.id, row.id));
   } catch (err) {
     await db.insert(buildMessages).values({

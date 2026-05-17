@@ -1,128 +1,206 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { ArrowUp, MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AssistantBubble,
+  ErrorCard,
+  UserBubble,
+} from "@/components/ChatBubbles";
 
-type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
+type Msg = { id: string; role: "user" | "assistant"; content: string };
+type ChatItem =
+  | { kind: "msg"; msg: Msg }
+  | { kind: "error"; id: string; message: string; lastUserText: string };
+
+const storageKey = (agentId: string) => `agentic:run:${agentId}`;
 
 export function RunChat({ agentId }: { agentId: string }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
+  // Restore from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey(agentId));
+      if (raw) {
+        const parsed = JSON.parse(raw) as Msg[];
+        if (Array.isArray(parsed)) {
+          setItems(parsed.map((msg) => ({ kind: "msg", msg })));
+        }
+      }
+    } catch {
+      // ignore corrupt storage
+    }
+  }, [agentId]);
+
+  // Persist only successful messages (not errors)
+  useEffect(() => {
+    const msgs = items.flatMap((i) => (i.kind === "msg" ? [i.msg] : []));
+    try {
+      localStorage.setItem(storageKey(agentId), JSON.stringify(msgs));
+    } catch {
+      // quota etc.
+    }
+  }, [items, agentId]);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streaming]);
+  }, [items, streaming]);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || streaming) return;
-    setInput("");
+  const send = useCallback(
+    async (text: string) => {
+      if (!text || streaming) return;
+      setInput("");
 
-    const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: text };
-    const assistantId = `a-${Date.now()}`;
-    const history = [...messages, userMsg];
-    setMessages([...history, { id: assistantId, role: "assistant", content: "" }]);
-    setStreaming(true);
+      const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", content: text };
+      const assistantId = `a-${Date.now()}`;
+      const assistantMsg: Msg = { id: assistantId, role: "assistant", content: "" };
 
+      // Build history from current messages + new user msg (excluding any errors)
+      const historyMsgs = items.flatMap((i) => (i.kind === "msg" ? [i.msg] : []));
+      const history = [...historyMsgs, userMsg];
+
+      // Drop any pending error, add user + empty assistant
+      setItems((prev) => [
+        ...prev.filter((i) => i.kind !== "error"),
+        { kind: "msg", msg: userMsg },
+        { kind: "msg", msg: assistantMsg },
+      ]);
+      setStreaming(true);
+
+      try {
+        const res = await fetch(`/api/agents/${agentId}/run`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            messages: history.map((m) => ({ role: m.role, content: m.content })),
+          }),
+        });
+        if (!res.ok || !res.body) {
+          const errText = await res.text().catch(() => "Request failed");
+          // Remove the empty assistant bubble, append error card
+          setItems((prev) => [
+            ...prev.filter((i) => !(i.kind === "msg" && i.msg.id === assistantId)),
+            { kind: "error", id: `err-${Date.now()}`, message: errText, lastUserText: text },
+          ]);
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let acc = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          acc += decoder.decode(value, { stream: true });
+          setItems((prev) =>
+            prev.map((i) =>
+              i.kind === "msg" && i.msg.id === assistantId
+                ? { kind: "msg", msg: { ...i.msg, content: acc } }
+                : i,
+            ),
+          );
+        }
+      } catch (err) {
+        setItems((prev) => [
+          ...prev.filter((i) => !(i.kind === "msg" && i.msg.id === assistantId)),
+          {
+            kind: "error",
+            id: `err-${Date.now()}`,
+            message: err instanceof Error ? err.message : String(err),
+            lastUserText: text,
+          },
+        ]);
+      } finally {
+        setStreaming(false);
+      }
+    },
+    [agentId, items, streaming],
+  );
+
+  function newChat() {
+    setItems([]);
     try {
-      const res = await fetch(`/api/agents/${agentId}/run`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          messages: history.map((m) => ({ role: m.role, content: m.content })),
-        }),
-      });
-      if (!res.ok || !res.body) {
-        const errText = await res.text().catch(() => "Request failed");
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${errText}` } : m)),
-        );
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let acc = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        acc += decoder.decode(value, { stream: true });
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, content: acc } : m)),
-        );
-      }
-    } catch (err) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? { ...m, content: `Error: ${err instanceof Error ? err.message : String(err)}` }
-            : m,
-        ),
-      );
-    } finally {
-      setStreaming(false);
+      localStorage.removeItem(storageKey(agentId));
+    } catch {
+      // ignore
     }
   }
 
+  const hasMessages = items.some((i) => i.kind === "msg");
+
   return (
     <div className="relative flex h-full flex-col">
-      <div className="flex-1 space-y-6 overflow-y-auto px-8 py-8">
-        {messages.length === 0 ? (
-          <div className="mx-auto max-w-2xl rounded-2xl border border-white/15 bg-card/40 p-8 text-base text-muted-foreground backdrop-blur-xl">
-            <p className="text-lg font-semibold text-foreground">Say something to your agent.</p>
-            <p className="mt-3 text-base">
-              It will respond based on the instructions you set up in the designer.
-            </p>
-          </div>
-        ) : null}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+      <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-6 pt-4">
+        {hasMessages ? (
+          <button
+            type="button"
+            onClick={newChat}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-white/25 hover:text-foreground"
           >
-            <div
-              className={`max-w-[78%] whitespace-pre-wrap rounded-3xl px-6 py-4 text-lg leading-relaxed shadow-lg ${
-                m.role === "user"
-                  ? "bg-white text-black"
-                  : "border border-white/10 bg-card/60 text-foreground backdrop-blur-xl"
-              }`}
-            >
-              {m.content || (streaming ? "…" : "")}
-            </div>
-          </div>
-        ))}
+            <MessageSquarePlus className="h-3.5 w-3.5" /> New chat
+          </button>
+        ) : <span />}
+      </div>
+
+      <div className="mx-auto w-full max-w-3xl flex-1 space-y-5 overflow-y-auto px-6 py-6">
+        {items.length === 0 ? (
+          <AssistantBubble>
+            Send a message to test your agent. Your conversation stays here even if you refresh.
+          </AssistantBubble>
+        ) : null}
+
+        {items.map((item) => {
+          if (item.kind === "error") {
+            return (
+              <ErrorCard
+                key={item.id}
+                message={item.message}
+                onRetry={() => send(item.lastUserText)}
+              />
+            );
+          }
+          const m = item.msg;
+          return m.role === "user" ? (
+            <UserBubble key={m.id}>{m.content}</UserBubble>
+          ) : (
+            <AssistantBubble key={m.id}>{m.content || (streaming ? "…" : "")}</AssistantBubble>
+          );
+        })}
+
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-white/10 bg-background/60 px-8 py-5 backdrop-blur-2xl">
+      <div className="border-t border-white/10 bg-background/60 px-6 py-5 backdrop-blur-2xl">
         <div className="mx-auto max-w-3xl">
-          <div className="glow-hover flex items-end gap-3 rounded-2xl border border-white/15 bg-card/40 p-3 backdrop-blur-xl">
+          <div className="glow-hover flex items-end gap-2 rounded-2xl border border-white/15 bg-card/40 p-2 backdrop-blur-xl">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  send();
+                  send(input.trim());
                 }
               }}
-              placeholder="Ask your agent something…"
-              className="min-h-14 resize-none border-0 bg-transparent px-3 text-base leading-relaxed shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+              placeholder="Send a message to test your agent…"
+              className="min-h-12 resize-none border-0 bg-transparent px-3 py-3 text-base leading-relaxed shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
               disabled={streaming}
             />
             <Button
-              onClick={send}
+              onClick={() => send(input.trim())}
               disabled={streaming || !input.trim()}
-              className="h-12 rounded-full bg-white px-6 text-base font-semibold text-black transition hover:bg-white/90 hover:scale-[1.03] disabled:scale-100"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-full bg-white text-black transition hover:bg-white/90 hover:scale-[1.05] disabled:scale-100"
+              aria-label="Send"
             >
-              Send
+              <ArrowUp className="h-5 w-5" />
             </Button>
           </div>
-          <p className="mt-3 text-center text-xs text-muted-foreground">
-            Enter to send · Shift+Enter for newline
-          </p>
         </div>
       </div>
     </div>

@@ -34,7 +34,7 @@ export async function sendBuildMessage(agentId: string, content: string) {
 
   const priorHistory = history.slice(0, -1);
 
-  const { updatedSpec, assistantReply } = await refineAgentSpec({
+  const { updatedSpec, name, assistantReply } = await refineAgentSpec({
     currentSpec: (agent.spec ?? EMPTY_SPEC) as AgentSpec,
     history: priorHistory,
     userMessage: trimmed,
@@ -48,7 +48,7 @@ export async function sendBuildMessage(agentId: string, content: string) {
 
   await db
     .update(agents)
-    .set({ spec: updatedSpec, updatedAt: new Date() })
+    .set({ name, spec: updatedSpec, updatedAt: new Date() })
     .where(eq(agents.id, agentId));
 
   revalidatePath(`/agents/${agentId}/build`);

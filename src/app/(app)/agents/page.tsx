@@ -1,20 +1,18 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
+import { MoreHorizontal } from "lucide-react";
 import { auth } from "@/auth";
 import { db } from "@/db/client";
 import { agents } from "@/db/schema";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { createAgent, deleteAgent } from "./actions";
-
-const EXAMPLES = [
-  { emoji: "✍️", label: "LinkedIn post writer", prompt: "An agent that writes catchy LinkedIn posts from a topic I give it." },
-  { emoji: "💡", label: "Side-hustle ideas", prompt: "An agent that brainstorms side-hustle business ideas tailored to my skills." },
-  { emoji: "📚", label: "Math tutor", prompt: "A math tutor that walks me through problems step by step." },
-  { emoji: "🔗", label: "URL summarizer", prompt: "A bot that summarizes any URL I send it in 3 bullet points." },
-  { emoji: "🎯", label: "Cold email coach", prompt: "An agent that critiques and rewrites my cold emails to sound human." },
-  { emoji: "🧠", label: "Interview prep", prompt: "An agent that drills me on system design interview questions." },
-];
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { deleteAgent } from "./actions";
+import { PromptDock } from "./PromptDock";
 
 export default async function AgentsPage() {
   const session = await auth();
@@ -32,104 +30,49 @@ export default async function AgentsPage() {
       <div className="aurora-extra" />
       <div className="absolute inset-0 grid-bg -z-10" />
 
-      <div className="relative mx-auto max-w-6xl px-6 pb-32 pt-20 sm:pt-28">
-        {/* Hero */}
+      <div className="relative mx-auto max-w-6xl px-6 pb-24 pt-16">
+        {/* Hero — single line, returning users see library above fold */}
         <div className="fade-up text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-4 py-1.5 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground backdrop-blur">
-            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" />
-            Live · Powered by Groq
-          </div>
-
-          <h1 className="mt-8 text-[clamp(3rem,9vw,8.5rem)] font-semibold leading-[0.95] tracking-[-0.04em]">
-            <span className="block">Build an</span>
-            <span className="block text-gradient">AI agent.</span>
-            <span className="block text-muted-foreground/80">In one sentence.</span>
+          <h1 className="text-[clamp(2.25rem,5vw,4rem)] font-semibold leading-[1.05] tracking-[-0.04em]">
+            Build an AI agent <span className="text-gradient">in one sentence</span>.
           </h1>
-
-          <p className="mx-auto mt-10 max-w-2xl text-xl leading-relaxed text-muted-foreground sm:text-2xl">
-            Describe what your agent should do. We build it instantly.
-            <br />
-            No code. No setup. Just words.
+          <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+            Describe what your agent should do. We build it instantly. No code.
           </p>
         </div>
 
-        {/* Prompt dock */}
-        <form
-          action={createAgent}
-          className="fade-up mx-auto mt-16 max-w-3xl"
-          style={{ animationDelay: "0.15s" }}
-        >
-          <div className="glow-hover relative rounded-[2rem] border border-white/20 bg-card/30 p-2 shadow-[0_30px_120px_-30px_rgba(167,139,255,0.5)] backdrop-blur-2xl">
-            <Textarea
-              name="description"
-              placeholder={`Describe your agent…\n\ne.g. "An agent that writes catchy LinkedIn posts from a topic I give it."`}
-              required
-              minLength={5}
-              className="min-h-40 resize-none rounded-3xl border-0 bg-transparent p-6 text-lg leading-relaxed shadow-none placeholder:text-muted-foreground/50 focus-visible:ring-0"
-            />
-            <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-1">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <kbd className="rounded border border-white/15 bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px]">
-                  llama-3.3-70b
-                </kbd>
-                <span>Free, instant</span>
-              </div>
-              <Button
-                type="submit"
-                className="group h-12 rounded-full bg-white px-7 text-base font-semibold text-black transition hover:bg-white/90 hover:scale-[1.02]"
-              >
-                Build agent
-                <span className="ml-2 inline-block transition group-hover:translate-x-1">→</span>
-              </Button>
-            </div>
-          </div>
-        </form>
-
-        {/* Examples carousel */}
-        <div className="fade-up mt-12" style={{ animationDelay: "0.3s" }}>
-          <p className="mb-4 text-center text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-            Or start from an example
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            {EXAMPLES.map((ex) => (
-              <form key={ex.label} action={createAgent}>
-                <input type="hidden" name="description" value={ex.prompt} />
-                <button
-                  type="submit"
-                  className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm transition hover:border-white/30 hover:bg-white/[0.08] hover:scale-105"
-                >
-                  <span className="text-base">{ex.emoji}</span>
-                  <span className="font-medium">{ex.label}</span>
-                </button>
-              </form>
-            ))}
-          </div>
+        {/* Prompt dock with ghost typewriter */}
+        <div className="fade-up mt-10" style={{ animationDelay: "0.15s" }}>
+          <PromptDock />
         </div>
 
-        {/* Existing agents */}
-        {rows.length > 0 ? (
-          <div className="mt-32">
-            <div className="mb-10 flex items-baseline justify-between">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">
-                  Library
-                </p>
-                <h2 className="mt-3 text-4xl font-semibold tracking-tight">Your agents</h2>
-              </div>
-              <span className="text-sm text-muted-foreground">{rows.length} agent{rows.length === 1 ? "" : "s"}</span>
-            </div>
+        {/* Library */}
+        <div className="mt-20">
+          <div className="mb-6 flex items-baseline justify-between">
+            <h2 className="text-xl font-semibold tracking-tight">Your library</h2>
+            <span className="text-sm text-muted-foreground">
+              {rows.length} agent{rows.length === 1 ? "" : "s"}
+            </span>
+          </div>
 
+          {rows.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-white/10 bg-card/20 p-10 text-center">
+              <p className="text-base text-muted-foreground">
+                You haven&apos;t built one yet — try an example above.
+              </p>
+            </div>
+          ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {rows.map((agent, i) => (
                 <div
                   key={agent.id}
                   className="group fade-up glow-hover relative overflow-hidden rounded-3xl border border-white/10 bg-card/30 p-6 backdrop-blur-xl transition hover:bg-card/60"
-                  style={{ animationDelay: `${i * 0.05}s` }}
+                  style={{ animationDelay: `${i * 0.04}s` }}
                 >
                   <Link href={`/agents/${agent.id}/build`} className="block">
                     <h3 className="text-lg font-semibold tracking-tight">{agent.name}</h3>
                     <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
-                      {agent.spec.summary || "Tap to keep building."}
+                      {agent.spec.summary || "Keep building."}
                     </p>
                   </Link>
 
@@ -148,27 +91,34 @@ export default async function AgentsPage() {
                         Run →
                       </Link>
                     </div>
-                    <form
-                      action={async () => {
-                        "use server";
-                        await deleteAgent(agent.id);
-                      }}
-                    >
-                      <Button
-                        type="submit"
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground hover:text-destructive"
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100 data-[popup-open]:opacity-100"
+                        aria-label="More actions"
                       >
-                        Delete
-                      </Button>
-                    </form>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <form
+                          action={async () => {
+                            "use server";
+                            await deleteAgent(agent.id);
+                          }}
+                        >
+                          <DropdownMenuItem variant="destructive" closeOnClick={true}>
+                            <button type="submit" className="w-full text-left">
+                              Delete agent
+                            </button>
+                          </DropdownMenuItem>
+                        </form>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        ) : null}
+          )}
+        </div>
       </div>
     </main>
   );
